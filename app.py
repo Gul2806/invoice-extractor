@@ -5,7 +5,6 @@ from PyPDF2 import PdfReader
 from groq import Groq
 import io
 import logging
-import plotly.express as px
 from datetime import datetime
 import re
 import os
@@ -422,39 +421,21 @@ if uploaded_files:
                     col1, col2 = st.columns(2)
                     
                     with col1:
-                        # Payment status pie chart
+                        # Payment status - using Streamlit native
+                        st.write("**Payment Status Distribution**")
                         status_counts = df['payment_status'].value_counts()
-                        fig1 = px.pie(
-                            values=status_counts.values, 
-                            names=status_counts.index,
-                            title="Payment Status Distribution",
-                            color_discrete_sequence=px.colors.qualitative.Set3
-                        )
-                        st.plotly_chart(fig1, use_container_width=True)
-                    
+                        st.dataframe(status_counts)
+                        
                     with col2:
-                        # Vendor distribution
+                        # Vendor distribution - using Streamlit native
+                        st.write("**Top Vendors**")
                         vendor_counts = df['vendor_name'].value_counts().head(5)
-                        fig2 = px.bar(
-                            x=vendor_counts.values,
-                            y=vendor_counts.index,
-                            orientation='h',
-                            title="Top 5 Vendors",
-                            color_discrete_sequence=['#667eea']
-                        )
-                        st.plotly_chart(fig2, use_container_width=True)
+                        st.dataframe(vendor_counts)
                     
-                    # Amounts by vendor
+                    # Amounts by vendor - using Streamlit native bar chart
                     st.subheader("Amounts by Vendor")
                     vendor_totals = df.groupby('vendor_name')['total_amount'].sum().sort_values(ascending=False)
-                    fig3 = px.bar(
-                        x=vendor_totals.index,
-                        y=vendor_totals.values,
-                        title="Total Amount by Vendor",
-                        color_discrete_sequence=['#764ba2']
-                    )
-                    fig3.update_layout(xaxis_tickangle=-45)
-                    st.plotly_chart(fig3, use_container_width=True)
+                    st.bar_chart(vendor_totals)
                 else:
                     st.info("No data available for analytics")
 
