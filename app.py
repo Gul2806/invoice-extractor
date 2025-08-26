@@ -8,9 +8,28 @@ import logging
 from datetime import datetime
 import re
 import os
+from dotenv import load_dotenv
+load_dotenv()
 
 # -------------------------
-# CONFIG & STYLING
+# USAGE LIMITS CONFIGURATION
+# -------------------------
+# Detect if running on Streamlit Cloud vs locally
+IS_STREAMLIT_CLOUD = os.environ.get('STREAMLIT_SERVER_RUNNING_ON', '').startswith('0.0.0.0')
+
+# Set usage limits - different for cloud vs local
+if IS_STREAMLIT_CLOUD:
+    MAX_FILES = 2  # Limit to 2 files on public deployment
+    MAX_PROCESSING_PER_SESSION = 1  # Only 1 processing session per user
+else:
+    MAX_FILES = 100  # Unlimited when running locally
+    MAX_PROCESSING_PER_SESSION = 100  # Unlimited locally
+
+# Session state for usage tracking
+if 'processing_count' not in st.session_state:
+    st.session_state.processing_count = 0
+if 'files_processed' not in st.session_state:
+    st.session_state.files_processed = 0
 # -------------------------
 st.set_page_config(
     page_title="Smart Invoice Extractor Pro",
@@ -249,7 +268,15 @@ with st.sidebar:
     st.title("⚙️ Invoice Extractor Pro")
     st.markdown("---")
     
+    # Show usage stats if on cloud
+    if IS_STREAMLIT_CLOUD:
+        st.subheader("Usage Stats")
+        st.write(f"Files processed this session: {st.session_state.files_processed}/{MAX_FILES}")
+        st.write(f"Processing sessions: {st.session_state.processing_count}/{MAX_PROCESSING_PER_SESSION}")
+        st.markdown("---")
+    
     st.subheader("Settings")
+    # ... rest of your sidebar code
     confidence_threshold = st.slider("Confidence Threshold", 0.7, 1.0, 0.9)
     auto_validate = st.checkbox("Auto-validate Data", value=True)
     show_analytics = st.checkbox("Show Analytics Dashboard", value=True)
@@ -288,10 +315,22 @@ uploaded_files = st.file_uploader(
     "**Upload Invoice PDFs**", 
     type=["pdf"], 
     accept_multiple_files=True,
-    help="Select one or multiple invoice PDF files for processing"
+    help=f"Select one or multiple invoice PDF files for processing{' (Max ' + str(MAX_FILES) + ' files)' if IS_STREAMLIT_CLOUD else ''}"
 )
 
 if uploaded_files:
+    # Check if user has reached limits (only on cloud)
+    if IS_STREAMLIT_CLOUD:
+        if st.session_state.processing_count >= MAX_PROCESSING_PER_SESSION:
+            st.error("🚫 You've reached the maximum processing limit for this session.")
+            st.info("Please refresh the page to start a new session.")
+            st.stop()
+        
+        if len(uploaded_files) > MAX_FILES:
+            st.error(f"🚫 Maximum {MAX_FILES} files allowed in demo version")
+            st.info("Contact us for unlimited access")
+            st.stop()
+    
     # Check if API is configured
     if client is None:
         st.error("""
@@ -303,6 +342,29 @@ if uploaded_files:
         3. Redeploy your app
         """)
         st.stop()
+    
+    # Display uploaded files with limits info
+    st.subheader("📁 Uploaded Files")
+    for file in uploaded_files:
+        st.markdown(f"""
+        <div class="file-card">
+            <strong>{file.name}</strong> • {file.size // 1024} KB
+        </div>
+        """, unsafe_allow_html=True)
+    
+    if IS_STREAMLIT_CLOUD:
+        st.info(f"🔒 Demo Mode: Processing {len(uploaded_files)} of max {MAX_FILES} files")
+    
+    # Process invoices
+    with st.spinner("🚀 Processing invoices with AI-powered extraction..."):
+        df = process_invoices(uploaded_files)
+        if auto_validate and len(df) > 0:
+            df = df.apply(validate_invoice_data, axis=1)
+    
+    # Update usage counters
+    if IS_STREAMLIT_CLOUD:
+        st.session_state.processing_count += 1
+        st.session_state.files_processed += len(uploaded_files)
     
     # Display uploaded files
     st.subheader("📁 Uploaded Files")
@@ -503,13 +565,17 @@ else:
     col1, col2 = st.columns([2, 1])
     
     with col1:
-        st.info("""
+        demo_note = "**Note:** Public demo limited to 2 files per session" if IS_STREAMLIT_CLOUD else "**Full version:** Unlimited processing available"
+        
+        st.info(f"""
         ## 🚀 Getting Started
         
         1. **Upload PDF invoices** using the file uploader
         2. **AI processing** will automatically extract all relevant data
         3. **Review and validate** the extracted information
         4. **Export** in multiple formats (Excel, CSV, JSON)
+        
+        {demo_note}
         
         Supported features:
         - Multi-file batch processing
@@ -518,6 +584,17 @@ else:
         - Currency detection and conversion
         - Payment status classification
         """)
+    
+    with col2:
+        st.image("https://cdn-icons-png.flaticon.com/512/3379/3379027.png", width=150)
+        st.write("")
+        st.write("**Supported Formats:**")
+        st.write("✅ PDF invoices")
+        st.write("✅ Multi-language support")
+        st.write("✅ Various invoice layouts")
+        
+    st.markdown("---")
+    st.caption("💡 Tip: Upload multiple invoices at once for batch processing")
     
     with col2:
         st.image("https://cdn-icons-png.flaticon.com/512/3379/3379027.png", width=150)
