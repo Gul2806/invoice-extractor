@@ -3,3 +3,4 @@ pandas
 groq
 PyPDF2
 openpyxl
+python-dotenv
